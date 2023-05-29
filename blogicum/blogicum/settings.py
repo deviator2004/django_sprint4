@@ -43,7 +43,6 @@ INSTALLED_APPS = [
     'django_bootstrap5',
     'blog.apps.BlogConfig',
     'pages.apps.PagesConfig',
-    'core.apps.CoreConfig',
     'debug_toolbar',
 ]
 

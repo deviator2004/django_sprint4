@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Location, Category, Post
+from .models import Location, Category, Post, Comment
 
 admin.site.empty_value_display = 'Не задано'
 
@@ -37,3 +37,8 @@ class CategoryAdmin(admin.ModelAdmin):
     list_display = ('title', 'is_published', 'description', 'slug')
     list_editable = ('is_published',)
     search_fields = ('title',)
+
+
+@admin.register(Comment)
+class CommentAdmin(admin.ModelAdmin):
+    list_display = ('text', 'post', 'author')

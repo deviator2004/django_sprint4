@@ -1,40 +1,45 @@
 import datetime as dt
 
-from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404
 from django.db.models import Count
 from django.views.generic import (
     CreateView, DeleteView, DetailView, ListView, UpdateView
 )
 from django.urls import reverse_lazy
 
-from .models import Post, Category, Comment
+from .models import Post, Category, Comment, User
 from .forms import PostForm, CommentForm
+from .mixins import CommentMixin, PostMixin
 
-User = get_user_model()
+
+PAG = 10
+
 now = dt.datetime.now()
 
 
-class PostListView(ListView):
-    query = Post.objects.annotate(comment_count=Count('comments')).all()
-    queryset = query.select_related(
+def get_query():
+    query = Post.objects.select_related(
         'author',
         'location',
-        'category',
-    ).filter(
+        'category'
+    ).annotate(comment_count=Count('comments')).order_by('-pub_date')
+    return query
+
+
+class PostListView(ListView):
+    queryset = get_query().filter(
         pub_date__lt=now,
         is_published=True,
         category__is_published=True
-    ).order_by('-pub_date')
-    paginate_by = 10
+    )
+    paginate_by = PAG
     template_name = 'blog/index.html'
 
 
 class CategoryListView(ListView):
-    query = Post.objects.annotate(comment_count=Count('comments')).all()
     model = Post
-    paginate_by = 10
+    paginate_by = PAG
     template_name = 'blog/category.html'
 
     def get_queryset(self):
@@ -43,17 +48,11 @@ class CategoryListView(ListView):
             slug=self.kwargs['category_slug'],
             is_published=True
         )
-        posts = Post.objects.select_related(
-            'author',
-            'location',
-            'category',
-        ).annotate(
-            comment_count=Count('comments')
-        ).filter(
+        posts = get_query().filter(
             category=self.category,
             pub_date__lt=now,
             is_published=True
-        ).order_by('-pub_date')
+        )
         return posts
 
     def get_context_data(self, **kwargs):
@@ -64,18 +63,12 @@ class CategoryListView(ListView):
 
 class ProfileListView(ListView):
     model = Post
-    paginate_by = 10
+    paginate_by = PAG
     template_name = 'blog/profile.html'
 
     def get_queryset(self):
         self.author = get_object_or_404(User, username=self.kwargs['username'])
-        posts = Post.objects.select_related(
-            'author',
-            'location',
-            'category',
-        ).annotate(
-            comment_count=Count('comments')
-        ).filter(author=self.author).order_by('-pub_date')
+        posts = get_query().filter(author=self.author)
         return posts
 
     def get_context_data(self, **kwargs):
@@ -113,33 +106,11 @@ class PostCreateView(LoginRequiredMixin, CreateView):
         return url
 
 
-class PostUpdateView(LoginRequiredMixin, UpdateView):
-    model = Post
+class PostUpdateView(LoginRequiredMixin, PostMixin, UpdateView):
     form_class = PostForm
-    template_name = 'blog/create.html'
-    pk_url_kwarg = 'id'
-
-    def dispatch(self, request, *args, **kwargs):
-        instance = get_object_or_404(Post, pk=kwargs['id'])
-        if instance.author != request.user:
-            return redirect(
-                'blog:post_detail', id=instance.id
-            )
-        return super().dispatch(request, *args, **kwargs)
 
 
-class PostDeleteView(LoginRequiredMixin, DeleteView):
-    model = Post
-    template_name = 'blog/create.html'
-    pk_url_kwarg = 'id'
-
-    def dispatch(self, request, *args, **kwargs):
-        instance = get_object_or_404(Post, pk=kwargs['id'])
-        if instance.author != request.user:
-            return redirect(
-                'blog:post_detail', id=instance.id
-            )
-        return super().dispatch(request, *args, **kwargs)
+class PostDeleteView(LoginRequiredMixin, PostMixin, DeleteView):
 
     def get_success_url(self):
         url = reverse_lazy(
@@ -165,58 +136,21 @@ class CommentCreateView(LoginRequiredMixin, CreateView):
     form_class = CommentForm
     comment = None
 
-    def dispatch(self, request, *args, **kwargs):
-        self.comment = get_object_or_404(Post, pk=kwargs['id'])
-        return super().dispatch(request, *args, **kwargs)
-
     def form_valid(self, form):
         form.instance.author = self.request.user
-        form.instance.post = self.comment
+        form.instance.post = get_object_or_404(Post, pk=self.kwargs['id'])
         return super().form_valid(form)
 
     def get_success_url(self):
         return reverse_lazy(
             'blog:post_detail',
-            kwargs={'id': self.object.post.id}
+            args=(self.kwargs['id'],)
         )
 
 
-class CommentUpdateView(LoginRequiredMixin, UpdateView):
-    model = Comment
+class CommentUpdateView(LoginRequiredMixin, CommentMixin, UpdateView):
     form_class = CommentForm
-    template_name = 'blog/comment.html'
-    pk_url_kwarg = 'comment_id'
-
-    def dispatch(self, request, *args, **kwargs):
-        instance = get_object_or_404(Comment, pk=kwargs['comment_id'])
-        if instance.author != request.user:
-            return redirect(
-                'blog:post_detail', id=instance.post.id
-            )
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_success_url(self):
-        return reverse_lazy(
-            'blog:post_detail',
-            kwargs={'id': self.object.post.id}
-        )
 
 
-class CommentDeleteView(LoginRequiredMixin, DeleteView):
-    model = Comment
-    template_name = 'blog/comment.html'
-    pk_url_kwarg = 'comment_id'
-
-    def dispatch(self, request, *args, **kwargs):
-        instance = get_object_or_404(Comment, pk=kwargs['comment_id'])
-        if instance.author != request.user:
-            return redirect(
-                'blog:post_detail', id=instance.post.id
-            )
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_success_url(self):
-        return reverse_lazy(
-            'blog:post_detail',
-            kwargs={'id': self.object.post.id}
-        )
+class CommentDeleteView(LoginRequiredMixin, CommentMixin, DeleteView):
+    pass
