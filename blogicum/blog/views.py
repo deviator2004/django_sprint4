@@ -68,7 +68,15 @@ class ProfileListView(ListView):
 
     def get_queryset(self):
         self.author = get_object_or_404(User, username=self.kwargs['username'])
-        posts = get_query().filter(author=self.author)
+        if self.request.user == self.author:
+            posts = get_query().filter(author=self.author)
+        else:
+            posts = get_query().filter(
+                author=self.author,
+                pub_date__lt=now,
+                is_published=True,
+                category__is_published=True
+            )
         return posts
 
     def get_context_data(self, **kwargs):
